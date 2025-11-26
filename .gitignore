@@ -1,0 +1,20 @@
+# Node
+node_modules/
+dist/
+build/
+
+# React
+.sass-cache
+.cache
+.npm/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Env
+.env
