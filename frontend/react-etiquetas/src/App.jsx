@@ -7,6 +7,7 @@ function App() {
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [resultado, setResultado] = useState(null);
+  const [urlImagenSubida, setUrlImagenSubida] = useState(null);
   const [cargando, setCargando] = useState(false);
 
   const subirYAnalizar = async () => {
@@ -20,12 +21,17 @@ function App() {
       await uploadBytes(imagenRef, archivo);
       const url = await getDownloadURL(imagenRef);
 
+      setUrlImagenSubida(url);
+      alert("Imagen subida correctamente ✔️");
+
       // 2) Enviar URL al backend
-      // PON LA URL DE TU BACKEND DEPLOY EN RENDER:
       const BACKEND_URL = "https://TU_BACKEND.onrender.com/etiquetar";
 
       const resp = await axios.post(BACKEND_URL, { url });
       setResultado(resp.data);
+
+      alert("Etiqueta generada ✔️");
+
     } catch (err) {
       console.error(err);
       alert("Error: " + (err.response?.data?.detail || err.message));
@@ -47,18 +53,26 @@ function App() {
         }}
       />
 
+      {/* Vista previa local */}
       {preview && (
         <div style={{ marginTop: 12 }}>
           <img src={preview} alt="preview" style={{ width: 240 }} />
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
-        <button onClick={subirYAnalizar} disabled={cargando}>
-          {cargando ? "Procesando..." : "Subir y generar etiquetas"}
-        </button>
-      </div>
+      <button onClick={subirYAnalizar} disabled={cargando} style={{ marginTop: 12 }}>
+        {cargando ? "Procesando..." : "Subir y generar etiquetas"}
+      </button>
 
+      {/* Imagen real ya subida a Firebase */}
+      {urlImagenSubida && (
+        <div style={{ marginTop: 20 }}>
+          <h3>Imagen subida a Firebase:</h3>
+          <img src={urlImagenSubida} alt="firebase" style={{ width: 240 }} />
+        </div>
+      )}
+
+      {/* Resultado del backend */}
       {resultado && (
         <div style={{ marginTop: 20 }}>
           <h3>Resultado</h3>
