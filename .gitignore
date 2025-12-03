@@ -1,20 +1,19 @@
-# Node
-node_modules/
-dist/
-build/
+# Ignorar entorno virtual
+backend/venv/
 
-# React
-.sass-cache
-.cache
-.npm/
+# Ignorar archivos temporales de Python
+backend/__pycache__/
+backend/*.pyc
 
-# Python
-.venv/
-__pycache__/
-*.pyc
+# Ignorar variables de entorno
+backend/.env
 
-# OS
+# Ignorar dependencias de Node
+frontend/react-etiquetas/node_modules/
+
+# Build de Vite
+frontend/react-etiquetas/dist/
+
+# Archivos del sistema
 .DS_Store
-
-# Env
-.env
+Thumbs.db
