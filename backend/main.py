@@ -4,9 +4,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
 # ============================
-# VARIABLES DE ENTORNO
+# VARIABLES DE ENTORNOs
 # ============================
 HF_TOKEN = os.getenv("HF_TOKEN")
 HF_MODEL_URL = os.getenv("HF_MODEL_URL", "https://api-inference.huggingface.co/models/google/vit-base-patch16-224")
