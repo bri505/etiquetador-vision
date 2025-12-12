@@ -11,203 +11,107 @@ from io import BytesIO
 import traceback
 
 # ============================================
-# IMPORTAR PARA MODELO LOCAL
+# CONFIGURACIÓN HF_TOKEN
+# ============================================
+# Cargar variables de entorno
+load_dotenv()
+
+# Obtener HF_TOKEN - IMPORTANTE para modelos privados o rate limits
+HF_TOKEN = os.getenv("HF_TOKEN", "")
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Mostrar info del token (sin mostrar el valor completo por seguridad)
+if HF_TOKEN:
+    logger.info(f"✅ HF_TOKEN configurado ({len(HF_TOKEN)} caracteres)")
+    # Configurar header para requests a Hugging Face
+    HF_HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
+else:
+    logger.warning("⚠️  HF_TOKEN no configurado. Algunos modelos pueden tener rate limits.")
+    logger.info("💡 Obtén un token gratis en: https://huggingface.co/settings/tokens")
+    HF_HEADERS = {}
+
+# ============================================
+# CONFIGURACIÓN DEL MODELO
+# ============================================
+MODEL_NAME = os.getenv("LOCAL_MODEL", "google/vit-base-patch16-224")
+
+# ============================================
+# IMPORTAR MODELO DE HUGGING FACE
 # ============================================
 try:
     import torch
     from PIL import Image
     from transformers import AutoImageProcessor, AutoModelForImageClassification
     import torch.nn.functional as F
+    
     MODEL_SUPPORT = True
-except ImportError as e:
-    print(f"⚠️  Advertencia: No se pudieron importar librerías de ML: {e}")
-    MODEL_SUPPORT = False
-
-# ============================================
-# CONFIGURACIÓN
-# ============================================
-print("=" * 70)
-print("🚀 INICIANDO BACKEND DE ETIQUETADO DE IMÁGENES")
-print("=" * 70)
-
-# Cargar variables de entorno
-load_dotenv(override=True)
-
-# Configuración del modelo
-MODEL_NAME = os.getenv("LOCAL_MODEL", "google/vit-base-patch16-224")
-MODEL_CACHE = {}
-
-# Configuración de Firebase para el backend
-try:
-    import firebase_admin
-    from firebase_admin import credentials, firestore
+    MODEL_CACHE = {}
     
-    if os.path.exists("firebase-credentials.json"):
-        cred = credentials.Certificate("firebase-credentials.json")
-        firebase_app = firebase_admin.initialize_app(cred)
-        firebase_db = firestore.client()
-        print("✅ Firebase Admin SDK conectado")
-    else:
-        print("⚠️  Archivo firebase-credentials.json no encontrado")
-        firebase_db = None
-except ImportError:
-    print("⚠️  Firebase Admin SDK no instalado. Ejecuta: pip install firebase-admin")
-    firebase_db = None
-except Exception as e:
-    print(f"❌ Error inicializando Firebase: {e}")
-    firebase_db = None
-
-# ============================================
-# MODELOS DE DATOS
-# ============================================
-class URLItem(BaseModel):
-    url: str
-
-class Etiqueta(BaseModel):
-    label: str
-    score: float
-    percentage: float
-
-# ============================================
-# FUNCIONES DEL MODELO
-# ============================================
-def cargar_modelo():
-    """Carga el modelo de clasificación de imágenes"""
-    if not MODEL_SUPPORT:
-        raise RuntimeError("Las librerías de ML no están instaladas")
-    
-    if "model" not in MODEL_CACHE:
-        print(f"🤖 Cargando modelo: {MODEL_NAME}")
+    def cargar_modelo():
+        """Carga el modelo usando HF_TOKEN si está disponible"""
+        if not MODEL_SUPPORT:
+            raise RuntimeError("Librerías de ML no instaladas")
         
-        try:
-            # Cargar procesador y modelo
-            processor = AutoImageProcessor.from_pretrained(MODEL_NAME)
-            model = AutoModelForImageClassification.from_pretrained(MODEL_NAME)
+        if "model" not in MODEL_CACHE:
+            logger.info(f"🤖 Cargando modelo: {MODEL_NAME}")
             
-            # Poner en modo evaluación
-            model.eval()
-            
-            # Cachear
-            MODEL_CACHE["model"] = model
-            MODEL_CACHE["processor"] = processor
-            
-            print(f"✅ Modelo '{MODEL_NAME}' cargado exitosamente")
-            print(f"   Dispositivo: {'GPU' if torch.cuda.is_available() else 'CPU'}")
-            
-        except Exception as e:
-            print(f"❌ Error cargando modelo: {e}")
-            
-            # Intentar con modelo alternativo
-            print("🔄 Intentando con modelo alternativo (microsoft/resnet-50)...")
             try:
-                MODEL_NAME_ALT = "microsoft/resnet-50"
-                processor = AutoImageProcessor.from_pretrained(MODEL_NAME_ALT)
-                model = AutoModelForImageClassification.from_pretrained(MODEL_NAME_ALT)
+                # Configurar token para la descarga
+                kwargs = {}
+                if HF_TOKEN:
+                    kwargs["token"] = HF_TOKEN
+                    kwargs["use_auth_token"] = HF_TOKEN
+                
+                # Cargar procesador y modelo
+                processor = AutoImageProcessor.from_pretrained(MODEL_NAME, **kwargs)
+                model = AutoModelForImageClassification.from_pretrained(MODEL_NAME, **kwargs)
+                
                 model.eval()
                 
                 MODEL_CACHE["model"] = model
                 MODEL_CACHE["processor"] = processor
-                print(f"✅ Modelo alternativo '{MODEL_NAME_ALT}' cargado exitosamente")
-            except Exception as e2:
-                print(f"❌ Error con modelo alternativo: {e2}")
-                raise RuntimeError(f"No se pudo cargar ningún modelo. Error: {e}")
+                
+                logger.info(f"✅ Modelo '{MODEL_NAME}' cargado exitosamente")
+                logger.info(f"   Dispositivo: {'GPU' if torch.cuda.is_available() else 'CPU'}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error cargando modelo: {e}")
+                
+                # Fallback a un modelo más pequeño y público
+                logger.info("🔄 Intentando con modelo alternativo público...")
+                try:
+                    MODEL_FALLBACK = "google/vit-base-patch16-224"
+                    processor = AutoImageProcessor.from_pretrained(MODEL_FALLBACK)
+                    model = AutoModelForImageClassification.from_pretrained(MODEL_FALLBACK)
+                    model.eval()
+                    
+                    MODEL_CACHE["model"] = model
+                    MODEL_CACHE["processor"] = processor
+                    logger.info(f"✅ Modelo alternativo '{MODEL_FALLBACK}' cargado")
+                except Exception as e2:
+                    logger.error(f"❌ Error con modelo alternativo: {e2}")
+                    raise RuntimeError(f"No se pudo cargar ningún modelo")
+        
+        return MODEL_CACHE["processor"], MODEL_CACHE["model"]
     
-    return MODEL_CACHE["processor"], MODEL_CACHE["model"]
-
-def clasificar_imagen(image_url, top_k=5):
-    """Clasifica una imagen usando el modelo"""
-    try:
-        print(f"📥 Descargando imagen: {image_url}")
-        
-        # 1. Descargar imagen
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(image_url, headers=headers, timeout=30)
-        response.raise_for_status()
-        
-        # 2. Verificar que sea una imagen
-        content_type = response.headers.get('content-type', '')
-        if 'image' not in content_type:
-            raise ValueError(f"URL no apunta a una imagen. Content-Type: {content_type}")
-        
-        # 3. Abrir y convertir imagen
-        image = Image.open(BytesIO(response.content)).convert("RGB")
-        
-        # 4. Cargar modelo
-        processor, model = cargar_modelo()
-        
-        # 5. Procesar imagen
-        inputs = processor(images=image, return_tensors="pt")
-        
-        # 6. Realizar inferencia
-        with torch.no_grad():
-            outputs = model(**inputs)
-            logits = outputs.logits
-            probabilities = F.softmax(logits, dim=-1)
-        
-        # 7. Obtener las top_k predicciones
-        top_probs, top_indices = torch.topk(probabilities, k=top_k)
-        
-        etiquetas = []
-        for i in range(top_k):
-            idx = top_indices[0][i].item()
-            score = top_probs[0][i].item()
-            
-            # Obtener etiqueta legible
-            if hasattr(model.config, 'id2label') and idx in model.config.id2label:
-                label = model.config.id2label[idx]
-            else:
-                label = f"clase_{idx}"
-            
-            etiquetas.append({
-                "label": label,
-                "score": round(score, 4),
-                "percentage": round(score * 100, 2)
-            })
-        
-        return etiquetas
-        
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Error de red: {e}")
-        raise HTTPException(status_code=400, detail=f"Error descargando imagen: {e}")
-    except Exception as e:
-        print(f"❌ Error en clasificación: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error procesando imagen: {str(e)}")
-
-def guardar_en_firestore(image_url, etiquetas, processing_time):
-    """Guarda los resultados en Firestore"""
-    if not firebase_db:
-        return None
-    
-    try:
-        doc_ref = firebase_db.collection("etiquetados").document()
-        
-        data = {
-            "image_url": image_url,
-            "etiquetas": etiquetas,
-            "modelo": MODEL_NAME,
-            "tiempo_procesamiento": processing_time,
-            "timestamp": datetime.now().isoformat(),
-            "top_etiqueta": etiquetas[0]["label"] if etiquetas else None,
-            "confianza_top": etiquetas[0]["percentage"] if etiquetas else None
-        }
-        
-        doc_ref.set(data)
-        print(f"✅ Guardado en Firestore con ID: {doc_ref.id}")
-        return doc_ref.id
-    except Exception as e:
-        print(f"⚠️  Error guardando en Firestore: {e}")
-        return None
+except ImportError as e:
+    logger.warning(f"⚠️  No se pudieron importar librerías de ML: {e}")
+    logger.warning("   Ejecutando en modo mock")
+    MODEL_SUPPORT = False
 
 # ============================================
 # FASTAPI APP
 # ============================================
 app = FastAPI(
     title="API de Etiquetado de Imágenes",
-    description="Clasificación de imágenes usando modelos de Hugging Face + Firebase",
-    version="2.1.0"
+    description="Clasificación de imágenes usando Hugging Face",
+    version="1.0.0"
 )
 
 app.add_middleware(
@@ -218,69 +122,112 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class URLItem(BaseModel):
+    url: str
+
+# ============================================
+# ENDPOINTS
+# ============================================
 @app.get("/")
-async def home():
+def home():
     return {
         "status": "ok",
         "message": "✅ Backend funcionando",
         "model": MODEL_NAME,
-        "mode": "local_inference",
-        "device": "GPU" if torch.cuda.is_available() else "CPU",
-        "firebase": "conectado" if firebase_db else "no_configurado",
+        "mode": "real_inference" if MODEL_SUPPORT else "mock_mode",
+        "hf_token": "configured" if HF_TOKEN else "not_configured",
         "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/health")
-async def health():
-    model_status = "ready" if MODEL_CACHE else "not_loaded"
+def health():
     return {
         "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
         "services": {
-            "model": model_status,
-            "model_name": MODEL_NAME,
-            "firebase": "connected" if firebase_db else "not_configured",
+            "model": "ready" if MODEL_CACHE else "not_loaded",
+            "hf_token": "configured" if HF_TOKEN else "not_configured",
             "api": "operational"
-        },
-        "timestamp": datetime.now().isoformat()
+        }
     }
 
 @app.post("/etiquetar")
 async def etiquetar(item: URLItem):
+    """Endpoint principal para etiquetar imágenes"""
+    start_time = datetime.now()
+    
     try:
-        print(f"📨 Procesando imagen: {item.url[:100]}...")
-        start_time = datetime.now()
+        logger.info(f"📨 Procesando imagen: {item.url[:100]}...")
         
-        # Verificar soporte de modelo
-        if not MODEL_SUPPORT:
-            return {
-                "error": "dependencies_missing",
-                "message": "Las librerías de ML no están instaladas",
-                "solution": "Ejecuta: pip install torch torchvision transformers pillow"
-            }
-        
-        # Validar URL
+        # 1. Validar URL
         if not item.url.startswith(('http://', 'https://')):
             raise HTTPException(status_code=400, detail="URL debe comenzar con http:// o https://")
         
-        # Clasificar imagen
-        etiquetas = clasificar_imagen(item.url, top_k=5)
+        # 2. Descargar imagen
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(item.url, headers=headers, timeout=30)
+        response.raise_for_status()
         
-        # Calcular tiempo de procesamiento
+        # 3. Verificar que sea imagen
+        content_type = response.headers.get('content-type', '')
+        if 'image' not in content_type:
+            raise HTTPException(status_code=400, detail=f"URL no apunta a una imagen. Content-Type: {content_type}")
+        
+        # 4. Abrir imagen
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+        
+        # 5. Procesar con modelo
+        if MODEL_SUPPORT:
+            try:
+                # Cargar modelo
+                processor, model = cargar_modelo()
+                
+                # Procesar imagen
+                inputs = processor(images=image, return_tensors="pt")
+                
+                # Inferencia
+                with torch.no_grad():
+                    outputs = model(**inputs)
+                    logits = outputs.logits
+                    probabilities = F.softmax(logits, dim=-1)
+                
+                # Obtener top 5 predicciones
+                top_probs, top_indices = torch.topk(probabilities, k=5)
+                
+                etiquetas = []
+                for i in range(5):
+                    idx = top_indices[0][i].item()
+                    score = top_probs[0][i].item()
+                    
+                    # Obtener etiqueta legible
+                    if hasattr(model.config, 'id2label') and idx in model.config.id2label:
+                        label = model.config.id2label[idx]
+                    else:
+                        label = f"clase_{idx}"
+                    
+                    etiquetas.append({
+                        "label": label,
+                        "score": round(score, 4),
+                        "percentage": round(score * 100, 2)
+                    })
+                
+                mode = "real_inference"
+                
+            except Exception as e:
+                logger.error(f"❌ Error en inferencia: {e}")
+                # Fallback a modo mock
+                etiquetas = get_mock_predictions()
+                mode = "mock_fallback"
+                
+        else:
+            # Modo mock si no hay soporte de ML
+            etiquetas = get_mock_predictions()
+            mode = "mock_mode"
+        
+        # 6. Calcular tiempo
         processing_time = (datetime.now() - start_time).total_seconds()
         
-        print(f"🏷️  Etiquetas generadas: {len(etiquetas)}")
-        print(f"⏱️  Tiempo de procesamiento: {processing_time:.2f}s")
-        
-        # Mostrar top 3 etiquetas en consola
-        for etiqueta in etiquetas[:3]:
-            print(f"   {etiqueta['label']}: {etiqueta['percentage']}%")
-        
-        # Guardar en Firestore
-        firestore_id = None
-        if firebase_db:
-            firestore_id = guardar_en_firestore(item.url, etiquetas, processing_time)
-        
-        # Preparar respuesta
+        # 7. Preparar respuesta
         response_data = {
             "status": "success",
             "url": item.url,
@@ -288,108 +235,76 @@ async def etiquetar(item: URLItem):
             "modelo": MODEL_NAME,
             "tiempo_procesamiento": processing_time,
             "timestamp": datetime.now().isoformat(),
-            "top_etiqueta": etiquetas[0]["label"] if etiquetas else None,
-            "confianza_top": etiquetas[0]["percentage"] if etiquetas else None
+            "mode": mode,
+            "hf_token_used": bool(HF_TOKEN)
         }
         
-        if firestore_id:
-            response_data["firestore_id"] = firestore_id
+        # 8. Log resultados
+        logger.info(f"🏷️  Etiquetas generadas: {len(etiquetas)}")
+        logger.info(f"⏱️  Tiempo: {processing_time:.2f}s")
+        logger.info(f"🔧 Modo: {mode}")
         
         return response_data
         
-    except HTTPException:
-        raise
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=400, detail=f"Error descargando imagen: {e}")
     except Exception as e:
-        print(f"❌ Error inesperado: {e}")
+        logger.error(f"❌ Error inesperado: {e}")
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error procesando imagen: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error procesando imagen: {str(e)}")
 
-@app.get("/modelo/info")
-async def get_model_info():
-    """Obtiene información sobre el modelo cargado"""
-    try:
-        if "model" in MODEL_CACHE:
-            model = MODEL_CACHE["model"]
-            return {
-                "modelo": MODEL_NAME,
-                "tipo": type(model).__name__,
-                "num_clases": model.config.num_labels,
-                "dispositivo": "GPU" if torch.cuda.is_available() else "CPU",
-                "estado": "cargado"
-            }
-        else:
-            return {
-                "modelo": MODEL_NAME,
-                "estado": "no_cargado",
-                "mensaje": "El modelo se cargará bajo demanda"
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+def get_mock_predictions():
+    """Predicciones mock para cuando el modelo no está disponible"""
+    return [
+        {"label": "computer_keyboard", "score": 0.95, "percentage": 95.0},
+        {"label": "mouse", "score": 0.03, "percentage": 3.0},
+        {"label": "monitor", "score": 0.02, "percentage": 2.0},
+        {"label": "laptop", "score": 0.01, "percentage": 1.0},
+        {"label": "desktop_computer", "score": 0.01, "percentage": 1.0}
+    ]
 
-@app.get("/historial")
-async def get_historial(limite: int = 10):
-    """Obtiene el historial de etiquetados"""
-    if not firebase_db:
+@app.get("/model/info")
+def get_model_info():
+    """Información del modelo"""
+    if MODEL_SUPPORT and "model" in MODEL_CACHE:
+        model = MODEL_CACHE["model"]
         return {
-            "error": "firebase_no_configurado",
-            "message": "Firebase no está configurado en el backend"
+            "modelo": MODEL_NAME,
+            "tipo": type(model).__name__,
+            "num_clases": model.config.num_labels,
+            "estado": "cargado",
+            "hf_token": "si" if HF_TOKEN else "no"
         }
-    
-    try:
-        docs = firebase_db.collection("etiquetados")\
-            .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-            .limit(limite)\
-            .stream()
-        
-        historial = []
-        for doc in docs:
-            data = doc.to_dict()
-            data["id"] = doc.id
-            historial.append(data)
-        
+    else:
         return {
-            "status": "success",
-            "count": len(historial),
-            "historial": historial
+            "modelo": MODEL_NAME,
+            "estado": "no_cargado" if MODEL_SUPPORT else "no_soportado",
+            "modo": "mock",
+            "hf_token": "si" if HF_TOKEN else "no",
+            "mensaje": "Usa /etiquetar para probar la API"
         }
-    except Exception as e:
-        print(f"❌ Error obteniendo historial: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/test")
-async def test_endpoint():
-    """Endpoint de prueba"""
-    return {
-        "message": "✅ Backend funcionando correctamente",
-        "model": MODEL_NAME,
-        "firebase": "conectado" if firebase_db else "no_conectado",
-        "timestamp": datetime.now().isoformat()
-    }
 
 # ============================================
 # INICIALIZACIÓN
 # ============================================
 @app.on_event("startup")
 async def startup_event():
-    """Carga el modelo al iniciar la aplicación"""
-    print("\n" + "=" * 70)
-    print("🔄 INICIALIZANDO APLICACIÓN...")
-    print(f"📦 Modelo: {MODEL_NAME}")
+    """Carga el modelo al iniciar"""
+    logger.info("=" * 70)
+    logger.info("🚀 INICIANDO ETIQUETADOR DE IMÁGENES")
+    logger.info(f"🤖 Modelo: {MODEL_NAME}")
+    logger.info(f"🔑 HF_TOKEN: {'✅ Configurado' if HF_TOKEN else '⚠️  No configurado'}")
+    logger.info(f"⚡ ML Support: {'✅ Disponible' if MODEL_SUPPORT else '⚠️  No disponible'}")
+    logger.info("=" * 70)
     
     if MODEL_SUPPORT:
         try:
-            cargar_modelo()
-            print("✅ Modelo precargado exitosamente")
+            # Carga diferida - se cargará con la primera solicitud
+            logger.info("📦 El modelo se cargará bajo demanda")
         except Exception as e:
-            print(f"⚠️  Error precargando modelo: {e}")
-            print("   El modelo se cargará bajo demanda...")
+            logger.error(f"❌ Error inicializando modelo: {e}")
     else:
-        print("⚠️  Modo demo: Librerías de ML no instaladas")
-    
-    print("=" * 70)
+        logger.info("🎭 Ejecutando en modo mock")
 
 # ============================================
 # EJECUCIÓN
@@ -399,18 +314,12 @@ if __name__ == "__main__":
     
     port = int(os.getenv("PORT", 10000))
     
-    print("\n" + "=" * 70)
-    print("🚀 SERVICIO INICIANDO")
-    print(f"🌐 URL: http://localhost:{port}")
-    print(f"📚 Docs: http://localhost:{port}/docs")
-    print(f"🤖 Modelo: {MODEL_NAME}")
-    print(f"🔥 Firebase: {'Conectado' if firebase_db else 'No configurado'}")
-    print("=" * 70)
+    logger.info(f"🌍 Servidor iniciando en puerto {port}")
+    logger.info(f"📚 API Docs: http://localhost:{port}/docs")
     
     uvicorn.run(
         app,
         host="0.0.0.0",
         port=port,
-        log_level="info",
-        timeout_keep_alive=300
+        log_level="info"
     )
