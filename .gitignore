@@ -1,0 +1,152 @@
+# ============================================
+# ENTORNOS VIRTUALES Y DEPENDENCIAS
+# ============================================
+backend/venv*/
+backend/.venv/
+backend/env/
+backend/ENV/
+backend/env.bak/
+backend/venv.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# pip
+pip-wheel-metadata/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ============================================
+# MODELOS Y DATOS PESADOS
+# ============================================
+models/
+*.bin
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pkl
+*.joblib
+*.dll
+*.exe
+
+# ============================================
+# FIREBASE Y CREDENCIALES
+# ============================================
+firebase-credentials.json
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# ============================================
+# ENTORNO Y CONFIGURACIÓN
+# ============================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.example
+.env*.local
+.env*.example
+
+# ============================================
+# SISTEMA OPERATIVO
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ============================================
+# IDE y EDITORES
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ============================================
+# LOGS
+# ============================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ============================================
+# BUILD y DIST
+# ============================================
+dist/
+build/
+out/
+.next/
+node_modules/
+.npm
+.yarn-integrity
+.cache/
+.parcel-cache/
+
+# ============================================
+# DOCKER
+# ============================================
+docker-compose.override.yml
+
+# ============================================
+# MISCELÁNEO
+# ============================================
+*.tar.gz
+*.7z
+*.rar
+*.zip
+dump.rdb
+*.sqlite3
+*.db
