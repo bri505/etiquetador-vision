@@ -1,26 +1,18 @@
-<<<<<<< HEAD
-# Versiones compatibles con Python 3.11 (que es lo que Render usa por defecto)
+﻿# Backend para Azure Computer Vision - Versión ligera para Render
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-dotenv==1.0.0
 requests==2.31.0
 pillow==10.1.0
+azure-cognitiveservices-vision-computervision==0.9.0
 
-# PyTorch CPU para evitar problemas de tamaño
-torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
-torchvision==0.16.0
-transformers==4.35.2
-
-# Pydantic versión estable
+# Para CORS y manejo de JSON
+python-multipart==0.0.6
 pydantic==2.5.0
+httpx==0.25.1
 
-# Elimina supabase si no lo usas (reduce dependencias)
-# supabase==1.1.1
-=======
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-requests==2.31.0
-python-dotenv==1.0.0
-supabase==1.1.1
-pydantic==2.5.0
->>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8
+# NOTA: Eliminados por ser demasiado pesados para Render:
+# torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu  (muy pesado)
+# torchvision==0.16.0 (muy pesado)
+# transformers==4.35.2 (muy pesado)
+# supabase==1.1.1 (solo si no lo usas)
