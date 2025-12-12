@@ -1,0 +1,56 @@
+services:
+<<<<<<< HEAD
+  # Backend - Optimizado para free tier
+  - type: web
+    name: etiquetador-backend
+    env: python
+    region: oregon  # Más rápido para la mayoría
+    plan: free  # ¡EXPLÍCITAMENTE FREE!
+    buildCommand: |
+      pip install --no-cache-dir -r backend/requirements.txt
+    startCommand: cd backend && python main.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: LOCAL_MODEL
+        value: google/vit-base-patch16-224  # Modelo ligero
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: pytorch-cache
+      mountPath: /opt/render/.cache
+      sizeGB: 1
+
+  # Frontend - Siempre gratis
+  - type: static
+    name: etiquetador-frontend
+    buildCommand: |
+      cd frontend/react-etiquetas
+      npm ci --only=production  # Más rápido que npm install
+      npm run build
+    publishPath: frontend/react-etiquetas/dist
+    envVars:
+      - key: VITE_BACKEND_URL
+        value: https://etiquetador-backend.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeploy: true
+=======
+  - name: etiquetador-vision-backend
+    type: web
+    env: python
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port 10000"
+
+  - name: etiquetador-vision-frontend
+    type: web
+    env: static
+    rootDir: frontend/react-etiquetas
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "dist"
+>>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8

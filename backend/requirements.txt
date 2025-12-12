@@ -1,0 +1,26 @@
+<<<<<<< HEAD
+# Versiones compatibles con Python 3.11 (que es lo que Render usa por defecto)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-dotenv==1.0.0
+requests==2.31.0
+pillow==10.1.0
+
+# PyTorch CPU para evitar problemas de tamaño
+torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.16.0
+transformers==4.35.2
+
+# Pydantic versión estable
+pydantic==2.5.0
+
+# Elimina supabase si no lo usas (reduce dependencias)
+# supabase==1.1.1
+=======
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+requests==2.31.0
+python-dotenv==1.0.0
+supabase==1.1.1
+pydantic==2.5.0
+>>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8
