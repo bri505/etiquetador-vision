@@ -1,5 +1,4 @@
 import os
-<<<<<<< HEAD
 import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,15 +9,18 @@ from datetime import datetime
 import requests
 from io import BytesIO
 import traceback
+import json
 
 # ============================================
-# CONFIGURACIÓN HF_TOKEN
+# CONFIGURACIÓN
 # ============================================
 # Cargar variables de entorno
 load_dotenv()
 
-# Obtener HF_TOKEN - IMPORTANTE para modelos privados o rate limits
+# Obtener variables de entorno
 HF_TOKEN = os.getenv("HF_TOKEN", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 # Configurar logging
 logging.basicConfig(
@@ -27,23 +29,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Mostrar info del token (sin mostrar el valor completo por seguridad)
+# Configuración del modelo
+MODEL_NAME = os.getenv("LOCAL_MODEL", "google/vit-base-patch16-224")
+HF_MODEL_URL = os.getenv("HF_MODEL_URL", "https://api-inference.huggingface.co/models/google/vit-base-patch16-224")
+
+# Configurar headers para Hugging Face
+HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
+
+# Mostrar info de configuración
 if HF_TOKEN:
     logger.info(f"✅ HF_TOKEN configurado ({len(HF_TOKEN)} caracteres)")
-    # Configurar header para requests a Hugging Face
-    HF_HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 else:
     logger.warning("⚠️  HF_TOKEN no configurado. Algunos modelos pueden tener rate limits.")
     logger.info("💡 Obtén un token gratis en: https://huggingface.co/settings/tokens")
-    HF_HEADERS = {}
+
+if SUPABASE_URL and SUPABASE_KEY:
+    logger.info("✅ Supabase configurado")
+else:
+    logger.info("ℹ️  Supabase no configurado")
 
 # ============================================
-# CONFIGURACIÓN DEL MODELO
-# ============================================
-MODEL_NAME = os.getenv("LOCAL_MODEL", "google/vit-base-patch16-224")
-
-# ============================================
-# IMPORTAR MODELO DE HUGGING FACE
+# IMPORTAR MODELO DE HUGGING FACE (opcional)
 # ============================================
 try:
     import torch
@@ -103,7 +109,7 @@ try:
     
 except ImportError as e:
     logger.warning(f"⚠️  No se pudieron importar librerías de ML: {e}")
-    logger.warning("   Ejecutando en modo mock")
+    logger.warning("   Usando API Hugging Face remota")
     MODEL_SUPPORT = False
 
 # ============================================
@@ -115,28 +121,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-=======
-import requests
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import json
-
-# Obtener variables de entorno
-HF_TOKEN = os.getenv("HF_TOKEN")
-HF_MODEL_URL = os.getenv("HF_MODEL_URL", "https://api-inference.huggingface.co/models/google/vit-base-patch16-224")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-
-if not HF_TOKEN:
-    raise RuntimeError("HF_TOKEN no configurado")
-
-HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
-
-app = FastAPI()
-
 # CORS
->>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -148,7 +133,6 @@ app.add_middleware(
 class URLItem(BaseModel):
     url: str
 
-<<<<<<< HEAD
 # ============================================
 # ENDPOINTS
 # ============================================
@@ -158,26 +142,21 @@ def home():
         "status": "ok",
         "message": "✅ Backend funcionando",
         "model": MODEL_NAME,
-        "mode": "real_inference" if MODEL_SUPPORT else "mock_mode",
+        "mode": "real_inference" if MODEL_SUPPORT else "remote_api",
         "hf_token": "configured" if HF_TOKEN else "not_configured",
         "timestamp": datetime.now().isoformat()
     }
-=======
-@app.get("/")
-def home():
-    return {"status": "ok", "mensaje": "Backend funcionando"}
->>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8
 
 @app.get("/health")
 def health():
     return {
         "status": "healthy",
-<<<<<<< HEAD
         "timestamp": datetime.now().isoformat(),
         "services": {
             "model": "ready" if MODEL_CACHE else "not_loaded",
             "hf_token": "configured" if HF_TOKEN else "not_configured",
-            "api": "operational"
+            "api": "operational",
+            "backend": "operational"
         }
     }
 
@@ -203,14 +182,16 @@ async def etiquetar(item: URLItem):
         if 'image' not in content_type:
             raise HTTPException(status_code=400, detail=f"URL no apunta a una imagen. Content-Type: {content_type}")
         
-        # 4. Abrir imagen
-        image = Image.open(BytesIO(response.content)).convert("RGB")
+        image_data = response.content
         
-        # 5. Procesar con modelo
+        # 4. Intentar inferencia local primero
         if MODEL_SUPPORT:
             try:
                 # Cargar modelo
                 processor, model = cargar_modelo()
+                
+                # Abrir imagen
+                image = Image.open(BytesIO(image_data)).convert("RGB")
                 
                 # Procesar imagen
                 inputs = processor(images=image, return_tensors="pt")
@@ -241,18 +222,38 @@ async def etiquetar(item: URLItem):
                         "percentage": round(score * 100, 2)
                     })
                 
-                mode = "real_inference"
+                mode = "local_inference"
                 
             except Exception as e:
-                logger.error(f"❌ Error en inferencia: {e}")
-                # Fallback a modo mock
-                etiquetas = get_mock_predictions()
-                mode = "mock_fallback"
+                logger.error(f"❌ Error en inferencia local: {e}")
+                # Fallback a API remota
+                mode = "remote_api_fallback"
+                etiquetas = await usar_api_remota(image_data)
                 
         else:
-            # Modo mock si no hay soporte de ML
-            etiquetas = get_mock_predictions()
-            mode = "mock_mode"
+            # Usar API remota si no hay soporte local
+            mode = "remote_api"
+            etiquetas = await usar_api_remota(image_data)
+        
+        # 5. Intentar guardar en Supabase si hay credenciales
+        if SUPABASE_URL and SUPABASE_KEY:
+            try:
+                import httpx
+                from postgrest import PostgrestClient
+                
+                client = PostgrestClient(SUPABASE_URL)
+                client.auth(SUPABASE_KEY)
+                
+                data = {
+                    "url": item.url,
+                    "resultado": etiquetas,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+                response = client.from_("etiquetas").insert(data).execute()
+                logger.info("✅ Guardado en Supabase exitoso")
+            except Exception as e:
+                logger.warning(f"⚠️  Error guardando en Supabase: {e}")
         
         # 6. Calcular tiempo
         processing_time = (datetime.now() - start_time).total_seconds()
@@ -283,6 +284,46 @@ async def etiquetar(item: URLItem):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error procesando imagen: {str(e)}")
 
+async def usar_api_remota(image_data):
+    """Usar API remota de Hugging Face"""
+    try:
+        print(f"Enviando a API Hugging Face: {HF_MODEL_URL}")
+        hf_response = requests.post(
+            HF_MODEL_URL,
+            headers=HEADERS,
+            data=image_data,
+            timeout=30
+        )
+        
+        # Si el modelo está cargando
+        if hf_response.status_code == 503:
+            estimated_time = hf_response.json().get("estimated_time", 30)
+            logger.warning(f"⚠️  Modelo cargando, tiempo estimado: {estimated_time}s")
+            
+            # Retornar predicciones mock mientras espera
+            return get_mock_predictions()
+        
+        hf_response.raise_for_status()
+        labels = hf_response.json()
+        
+        # Convertir formato de Hugging Face a nuestro formato
+        etiquetas = []
+        for item in labels[:5]:  # Top 5
+            if isinstance(item, dict):
+                etiquetas.append({
+                    "label": item.get("label", "unknown"),
+                    "score": item.get("score", 0),
+                    "percentage": round(item.get("score", 0) * 100, 2)
+                })
+        
+        logger.info(f"✅ API remota: {len(etiquetas)} etiquetas obtenidas")
+        return etiquetas
+        
+    except Exception as e:
+        logger.error(f"❌ Error en API remota: {e}")
+        # Fallback a modo mock
+        return get_mock_predictions()
+
 def get_mock_predictions():
     """Predicciones mock para cuando el modelo no está disponible"""
     return [
@@ -303,15 +344,16 @@ def get_model_info():
             "tipo": type(model).__name__,
             "num_clases": model.config.num_labels,
             "estado": "cargado",
-            "hf_token": "si" if HF_TOKEN else "no"
+            "hf_token": "si" if HF_TOKEN else "no",
+            "mode": "local"
         }
     else:
         return {
             "modelo": MODEL_NAME,
             "estado": "no_cargado" if MODEL_SUPPORT else "no_soportado",
-            "modo": "mock",
+            "modo": "remote_api",
             "hf_token": "si" if HF_TOKEN else "no",
-            "mensaje": "Usa /etiquetar para probar la API"
+            "mensaje": "Usando API Hugging Face remota"
         }
 
 # ============================================
@@ -319,7 +361,7 @@ def get_model_info():
 # ============================================
 @app.on_event("startup")
 async def startup_event():
-    """Carga el modelo al iniciar"""
+    """Inicialización al iniciar"""
     logger.info("=" * 70)
     logger.info("🚀 INICIANDO ETIQUETADOR DE IMÁGENES")
     logger.info(f"🤖 Modelo: {MODEL_NAME}")
@@ -334,7 +376,7 @@ async def startup_event():
         except Exception as e:
             logger.error(f"❌ Error inicializando modelo: {e}")
     else:
-        logger.info("🎭 Ejecutando en modo mock")
+        logger.info("🌐 Usando API Hugging Face remota")
 
 # ============================================
 # EJECUCIÓN
@@ -353,81 +395,3 @@ if __name__ == "__main__":
         port=port,
         log_level="info"
     )
-=======
-        "hf_token": bool(HF_TOKEN),
-        "backend": "operational"
-    }
-
-@app.post("/etiquetar")
-def etiquetar(item: URLItem):
-    try:
-        print(f"Procesando imagen: {item.url}")
-        
-        # 1. Descargar imagen
-        response = requests.get(item.url, timeout=15)
-        response.raise_for_status()
-        image_data = response.content
-        
-        print(f"Imagen descargada: {len(image_data)} bytes")
-        
-        # 2. Enviar a HuggingFace
-        print(f"Enviando a: {HF_MODEL_URL}")
-        hf_response = requests.post(
-            HF_MODEL_URL,
-            headers=HEADERS,
-            data=image_data,
-            timeout=30
-        )
-        
-        print(f"Respuesta HF: {hf_response.status_code}")
-        
-        # Si el modelo está cargando
-        if hf_response.status_code == 503:
-            return {
-                "error": "Modelo cargando",
-                "estimated_time": hf_response.json().get("estimated_time", 30),
-                "url": item.url
-            }
-        
-        hf_response.raise_for_status()
-        labels = hf_response.json()
-        
-        print(f"Etiquetas obtenidas: {len(labels)}")
-        
-        # 3. Intentar guardar en Supabase si hay credenciales
-        if SUPABASE_URL and SUPABASE_KEY:
-            try:
-                import httpx
-                from postgrest import PostgrestClient
-                
-                client = PostgrestClient(SUPABASE_URL)
-                client.auth(SUPABASE_KEY)
-                
-                data = {
-                    "url": item.url,
-                    "resultado": labels
-                }
-                
-                response = client.from_("etiquetas").insert(data).execute()
-                print("Guardado en Supabase exitoso")
-            except Exception as e:
-                print(f"Error guardando en Supabase: {e}")
-        
-        return {
-            "url": item.url,
-            "etiquetas": labels,
-            "procesado": True,
-            "timestamp": "2024-01-01T00:00:00Z"
-        }
-        
-    except requests.exceptions.RequestException as e:
-        print(f"Error de requests: {e}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-    except Exception as e:
-        print(f"Error inesperado: {e}")
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=10000)
->>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8
