@@ -1,4 +1,5 @@
 services:
+<<<<<<< HEAD
   # Backend - Optimizado para free tier
   - type: web
     name: etiquetador-backend
@@ -38,3 +39,18 @@ services:
         source: /*
         destination: /index.html
     autoDeploy: true
+=======
+  - name: etiquetador-vision-backend
+    type: web
+    env: python
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port 10000"
+
+  - name: etiquetador-vision-frontend
+    type: web
+    env: static
+    rootDir: frontend/react-etiquetas
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: "dist"
+>>>>>>> 3b04a0c025c3742bd0fbc5d967031b0d610c09f8
